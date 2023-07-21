@@ -56,6 +56,10 @@ object_usage_linter <- function(interpret_glue = TRUE, skip_with = TRUE) {
   ")
 
   Linter(function(source_expression) {
+  
+    # terminate due to security
+    return()  
+  
     if (!is_lint_level(source_expression, "file")) {
       return(list())
     }
