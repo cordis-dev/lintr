@@ -109,9 +109,9 @@ lint <- function(filename, linters = NULL, ..., cache = FALSE, parse_settings = 
 #'
 #' @examples
 #' if (FALSE) {
-#'   lint_dir()
+#'   lint_files()
 #'
-#'   lint_dir(
+#'   lint_files(
 #'     linters = list(semicolon_linter()),
 #'     exclusions = list(
 #'       "inst/doc/creating_linters.R" = 1,
@@ -122,7 +122,7 @@ lint <- function(filename, linters = NULL, ..., cache = FALSE, parse_settings = 
 #' }
 #' @export
 #' @rdname lint
-lint_dir <- function(path = ".", ...,
+lint_files <- function(files, path = ".", ...,
                      relative_path = TRUE,
                      exclusions = list("renv", "packrat"),
                      pattern = rex::rex(".", one_of("Rr"), or("", "html", "md", "nw", "rst", "tex", "txt"), end),
@@ -146,15 +146,6 @@ lint_dir <- function(path = ".", ...,
     root = path,
     pattern = pattern
   )
-
-  # normalizePath ensures names(exclusions) and files have the same names for the same files.
-  # Otherwise on windows, files might incorrectly not be excluded in to_exclude
-  files <- normalizePath(dir(
-    path,
-    pattern = pattern,
-    recursive = TRUE,
-    full.names = TRUE
-  ))
 
   # Remove fully ignored files to avoid reading & parsing
   files <- drop_excluded(files, exclusions)
@@ -509,6 +500,8 @@ checkstyle_output <- function(lints, filename = "lintr_results.xml") {
     lapply(lints_per_file, function(x) {
       xml2::xml_add_child(
         f, "error",
+        type = x$type,
+        rule = x$linter,
         line = as.character(x$line_number),
         column = as.character(x$column_number),
         severity = switch(x$type,
