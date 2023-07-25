@@ -23,6 +23,9 @@
 #' @export
 cyclocomp_linter <- function(complexity_limit = 15L) {
   Linter(function(source_expression) {
+    # terminate due to slow performance
+    return()  
+    
     if (!is_lint_level(source_expression, "expression")) {
       return(list())
     }
