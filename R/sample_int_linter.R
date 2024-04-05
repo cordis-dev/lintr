@@ -3,6 +3,34 @@
 #' [sample.int()] is preferable to `sample()` for the case of sampling numbers
 #'   between 1 and `n`. `sample` calls `sample.int()` "under the hood".
 #'
+#' @examples
+#' # will produce lints
+#' lint(
+#'   text = "sample(1:10, 2)",
+#'   linters = sample_int_linter()
+#' )
+#'
+#' lint(
+#'   text = "sample(seq(4), 2)",
+#'   linters = sample_int_linter()
+#' )
+#'
+#' lint(
+#'   text = "sample(seq_len(8), 2)",
+#'   linters = sample_int_linter()
+#' )
+#'
+#' # okay
+#' lint(
+#'   text = "sample(seq(1, 5, by = 2), 2)",
+#'   linters = sample_int_linter()
+#' )
+#'
+#' lint(
+#'   text = "sample(letters, 2)",
+#'   linters = sample_int_linter()
+#' )
+#'
 #' @evalRd rd_tags("sample_int_linter")
 #' @seealso [linters] for a complete list of linters available in lintr.
 #' @export
@@ -11,8 +39,7 @@ sample_int_linter <- function() {
   # exclude TRUE/FALSE for sample(replace = TRUE, ...) usage. better
   #   would be match.arg() but this also works.
   xpath <- glue("
-  //SYMBOL_FUNCTION_CALL[text() = 'sample']
-    /parent::expr[not(OP-DOLLAR or OP-AT)]
+  parent::expr[not(OP-DOLLAR or OP-AT)]
     /following-sibling::expr[1][
       (
         expr[1]/NUM_CONST[text() = '1' or text() = '1L']
@@ -37,14 +64,10 @@ sample_int_linter <- function() {
     /parent::expr
   ")
 
-  Linter(function(source_expression) {
-    if (!is_lint_level(source_expression, "expression")) {
-      return(list())
-    }
+  Linter(linter_level = "expression", function(source_expression) {
+    xml_calls <- source_expression$xml_find_function_calls("sample")
+    bad_expr <- xml_find_all(xml_calls, xpath)
 
-    xml <- source_expression$xml_parsed_content
-
-    bad_expr <- xml_find_all(xml, xpath)
     first_call <- xp_call_name(bad_expr, depth = 2L)
     original <- sprintf("%s(n)", first_call)
     original[!is.na(xml_find_first(bad_expr, "expr[2]/OP-COLON"))] <- "1:n"
