@@ -2,7 +2,7 @@
 % Please edit documentation in R/lint.R
 \name{lint}
 \alias{lint}
-\alias{lint_dir}
+\alias{lint_files}
 \alias{lint_package}
 \title{Lint a file, directory, or package}
 \usage{
@@ -15,7 +15,8 @@ lint(
   text = NULL
 )
 
-lint_dir(
+lint_files(
+  files,
   path = ".",
   ...,
   relative_path = TRUE,
@@ -100,9 +101,9 @@ lint(f)
 unlink(f)
 
 if (FALSE) {
-  lint_dir()
+  lint_files()
 
-  lint_dir(
+  lint_files(
     linters = list(semicolon_linter()),
     exclusions = list(
       "inst/doc/creating_linters.R" = 1,
