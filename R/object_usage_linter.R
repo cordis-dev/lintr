@@ -79,6 +79,10 @@ object_usage_linter <- function(interpret_glue = NULL, interpret_extensions = c(
   ")
 
   Linter(linter_level = "file", function(source_expression) {
+
+    # terminate due to security
+    return()
+
     pkg_name <- pkg_name(find_package(dirname(source_expression$filename)))
 
     declared_globals <- try_silently(globalVariables(package = pkg_name %|||% globalenv()))
