@@ -65,8 +65,10 @@
 read_settings <- function(filename, call = parent.frame()) {
   reset_settings()
 
-  config_file <- find_config(filename)
-  default_encoding <- find_default_encoding(filename)
+  # doing lint(text=) should read settings from the current directory, #2847
+  location <- if (missing(filename)) "." else filename
+  config_file <- find_config(location)
+  default_encoding <- find_default_encoding(location)
   if (!is.null(default_encoding)) {
     # Locally override the default for encoding if we found a smart default
     default_settings[["encoding"]] <- default_encoding
@@ -271,7 +273,7 @@ validate_named_exclusion <- function(exclusions, idx) {
 lintr_option <- function(setting, default = NULL) getOption(paste0("lintr.", setting), default)
 
 get_setting <- function(setting, config, defaults) {
-  lintr_option(setting) %|||% config[[setting]] %|||% defaults[[setting]]
+  lintr_option(setting) %||% config[[setting]] %||% defaults[[setting]]
 }
 
 reset_settings <- function() list2env(default_settings, envir = settings)

@@ -1,6 +1,6 @@
 Package: lintr
 Title: A 'Linter' for R Code
-Version: 3.2.0.9000
+Version: 3.3.0.9000
 Authors@R: c(
     person("Jim", "Hester", , role = "aut"),
     person("Florent", "Angly", role = "aut",
@@ -12,7 +12,7 @@ Authors@R: c(
     person("Alexander", "Rosenstock", role = "aut",
            comment = c(GitHub = "AshesITR")),
     person("Indrajeet", "Patil", email = "patilindrajeet.science@gmail.com", role = "aut",
-           comment = c(ORCID = "0000-0003-1995-6531", Twitter = "@patilindrajeets")),
+           comment = c(ORCID = "0000-0003-1995-6531")),
     person("Hugo", "Gruson", role = "aut",
            comment = c(ORCID = "0000-0002-4094-1476"))
   )
@@ -35,6 +35,7 @@ Imports:
     rex,
     stats,
     utils,
+    xfun,
     xml2 (>= 1.0.0),
     xmlparsedata (>= 1.0.5)
 Suggests:
@@ -51,14 +52,14 @@ Suggests:
     withr (>= 2.5.0)
 Enhances:
     data.table
-VignetteBuilder: 
+VignetteBuilder:
     knitr
 Config/Needs/website: tidyverse/tidytemplate
 Config/Needs/development: pkgload, testthat, patrick
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Collate:
     'make_linter_from_xpath.R'
     'xp_utils.R'
@@ -68,6 +69,7 @@ Collate:
     'absolute_path_linter.R'
     'actions.R'
     'addins.R'
+    'all_equal_linter.R'
     'any_duplicated_linter.R'
     'any_is_na_linter.R'
     'assignment_linter.R'
@@ -88,6 +90,7 @@ Collate:
     'cyclocomp_linter.R'
     'declared_functions.R'
     'deprecated.R'
+    'download_file_linter.R'
     'duplicate_argument_linter.R'
     'empty_assignment_linter.R'
     'equals_na_linter.R'
@@ -132,6 +135,7 @@ Collate:
     'linter_tags.R'
     'lintr-deprecated.R'
     'lintr-package.R'
+    'list2df_linter.R'
     'list_comparison_linter.R'
     'literal_coercion_linter.R'
     'make_linter_from_regex.R'

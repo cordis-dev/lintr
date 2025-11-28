@@ -274,7 +274,7 @@ lint_parse_error_r43 <- function(e, source_expression) {
 
 #' Convert a R < 4.3.0 standard parse error message into a lint
 #'
-#' @param message_info Match of the structured parse error message regex, matched in [lint_parse_error()]
+#' @param message_info Match of the structured parse error message regex, matched in `lint_parse_error()`
 #' @param source_expression The source expression that generated the parse error
 #'
 #' @return A [Lint()] based on text mining of the error message captured by `message_info`,
@@ -660,13 +660,14 @@ fix_tab_columns <- function(parse_content, tab_cols) {
 }
 
 tab_offsets <- function(tab_columns) {
-  cum_offset <- 0L
+  outer_env <- new.env(parent = emptyenv())
+  outer_env$cum_offset <- 0L
   vapply(
     tab_columns - 1L,
     function(tab_idx) {
       # nolint next: object_overwrite_linter. 'offset' is a perfect name here.
-      offset <- 7L - (tab_idx + cum_offset) %% 8L # using a tab width of 8 characters
-      cum_offset <<- cum_offset + offset
+      offset <- 7L - (tab_idx + outer_env$cum_offset) %% 8L # using a tab width of 8 characters
+      outer_env$cum_offset <- outer_env$cum_offset + offset
       offset
     },
     integer(1L),

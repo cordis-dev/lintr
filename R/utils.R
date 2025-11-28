@@ -1,10 +1,7 @@
-# TODO(#2768): possibly just use %||% instead
-`%|||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (is.atomic(x[[1L]]) && is.na(x[[1L]]))) {
-    y
-  } else {
-    x
-  }
+# TODO(R>=4.4.0): remove this.
+# NB: {backports} approach doesn't work since we need this before .onLoad() in names2()
+if (!exists("%||%", "package:base")) {
+  `%||%` <- function(x, y) if (is.null(x)) y else x # nolint: coalesce_linter.
 }
 
 `%==%` <- function(x, y) {
@@ -24,18 +21,19 @@ flatten_lints <- function(x) {
 # any function using unlist or c was dropping the classnames,
 # so need to brute force copy the objects
 flatten_list <- function(x, class) {
-  res <- list()
-  itr <- 1L
+  outer_env <- new.env(parent = emptyenv())
+  outer_env$res <- list()
+  outer_env$itr <- 1L
   assign_item <- function(x) {
     if (inherits(x, class)) {
-      res[[itr]] <<- x
-      itr <<- itr + 1L
+      outer_env$res[[outer_env$itr]] <- x
+      outer_env$itr <- outer_env$itr + 1L
     } else if (is.list(x)) {
       lapply(x, assign_item)
     }
   }
   assign_item(x)
-  res
+  outer_env$res
 }
 
 fix_names <- function(x, default) {
@@ -84,23 +82,30 @@ auto_names <- function(x) {
 
 # The following functions is from dplyr
 names2 <- function(x) {
-  names(x) %|||% rep("", length(x))
+  names(x) %||% rep("", length(x))
 }
 
-get_content <- function(lines, info) {
+#' @param needs_braces Logical, default FALSE. If it's possible or known that
+#'   `lines` cannot be parsed as a standalone expression, only a "child"
+#'   expression, we insert braces `{}` around it to ensure that it parses.
+#'   There is only one known case for this, namely, when finding code with
+#'   shorthand lambda `\(` where `\` and `(` are separated by a comment;
+#'   see `object_usage_linter()` for more details.
+#' @noRd
+get_content <- function(lines, info, needs_braces = FALSE) {
   lines[is.na(lines)] <- ""
 
   if (!missing(info)) {
+    # put in data.frame-like format
     if (is_node(info)) {
-      info <- lapply(stats::setNames(nm = c("col1", "col2", "line1", "line2")), function(attr) {
-        as.integer(xml_attr(info, attr))
-      })
+      info <- lapply(xml2::xml_attrs(info), as.integer)
     }
 
     lines <- lines[seq(info$line1, info$line2)]
     lines[length(lines)] <- substr(lines[length(lines)], 1L, info$col2)
     lines[1L] <- substr(lines[1L], info$col1, nchar(lines[1L]))
   }
+  if (needs_braces) lines <- c("{", lines, "}")
   paste(lines, collapse = "\n")
 }
 
@@ -152,12 +157,13 @@ Linter <- function(fun, name = linter_auto_name(), linter_level = c(NA_character
 }
 
 read_lines <- function(file, encoding = settings$encoding, ...) {
-  terminal_newline <- TRUE
+  outer_env <- new.env(parent = emptyenv())
+  outer_env$terminal_newline <- TRUE
   lines <- withCallingHandlers(
     readLines(file, warn = TRUE, ...),
     warning = function(w) {
-      if (grepl("incomplete final line found on", w$message, fixed = TRUE)) {
-        terminal_newline <<- FALSE
+      if (grepl("incomplete final line found on", conditionMessage(w), fixed = TRUE)) {
+        outer_env$terminal_newline <- FALSE
         invokeRestart("muffleWarning")
       }
     }
@@ -165,14 +171,9 @@ read_lines <- function(file, encoding = settings$encoding, ...) {
   lines_conv <- iconv(lines, from = encoding, to = "UTF-8")
   lines[!is.na(lines_conv)] <- lines_conv[!is.na(lines_conv)]
   Encoding(lines) <- "UTF-8"
-  attr(lines, "terminal_newline") <- terminal_newline
+  attr(lines, "terminal_newline") <- outer_env$terminal_newline
   lines
 }
-
-# nocov start
-# support for usethis::use_release_issue(). Make sure to use devtools::load_all() beforehand!
-release_bullets <- function() {}
-# nocov end
 
 # see issue #923, PR #2455 -- some locales ignore _ when running sort(), others don't.
 #   We want to consistently treat "_" < "n" = "N"; C locale does this, which 'radix' uses.
@@ -234,8 +235,12 @@ get_r_string <- function(s, xpath = NULL) {
       s <- xml_find_chr(s, sprintf("string(%s)", xpath))
     }
   }
-  # parse() skips "" elements --> offsets the length of the output,
-  #   but NA in --> NA out
+  r_string_from_parse_text(s)
+}
+
+# parse() skips "" elements --> offsets the length of the output,
+#   but NA in --> NA out
+r_string_from_parse_text <- function(s) {
   is.na(s) <- !nzchar(s)
   out <- as.character(parse(text = s, keep.source = FALSE))
   is.na(out) <- is.na(s)
