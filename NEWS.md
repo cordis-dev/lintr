@@ -1,6 +1,118 @@
-# lintr (development version)
+# lintr (in development)
 
-Nothing yet :)
+## Bug fixes
+
+* `unnecessary_lambda_linter()` doesn't error when encountering multiple comparison-only lambdas like `\(x) x == 1` (#3116, @MichaelChirico).
+* `implicit_assignment_linter(allow_paren_print = TRUE)` correctly excludes lints for `(a <- 1)` when other true positives are _also_ present (#3117, @MichaelChirico).
+
+## New and improved features
+
+* `lint()` gains support for passing both `filename` and `text` simultaneously. The `filename` is used for file identity (settings discovery, exclusion handling, knitr detection, and display) while `text` provides the content, so the file need not exist on disk. This is useful for IDE/LSP integrations where the editor has unsaved changes (#3017, @atusy).
+* Non-R code chunks in R Markdown and Quarto documents (such as `{extendr}` or `{ojs}`) are no longer parsed and linted as R code (#1896, @MichaelChirico).
+
+### New linters
+
+* `expect_shape_linter()` recommends usage of `testthat::expect_shape(x, ...)` over `expect_equal(nrow(x), n)`, `expect_equal(ncol(x), n)`, and `expect_equal(dim(x), d)` (#2893, @MichaelChirico).
+
+### Linter improvements
+
+* `class_equals_linter()` blocks checking class membership with `is.element(cls, class(obj))` or `is.element(class(obj), cls)`, matching existing behavior for `class(obj) %in% cls` (#2849, @MichaelChirico).
+* `sprintf_linter()` lints `sprintf()` and `gettextf()` calls with zero or one argument (#2980, @MichaelChirico).
+* `fixed_regex_linter()` encourages using the recent (R 4.6.0) `fixed = TRUE` arguments to `list.files()` and `dir()` (#3003, @MichaelChirico). To avoid depending on a recent R version, the rule for `list.files()` and `dir()` can be disabled by setting `check_file_listing = FALSE`.
+
+### Lint accuracy fixes: removing false positives
+
+* `unreachable_code_linter()` no longer flags cases like `switch(x, a = stop("invalid value"))` where `stop()` is in a nested call (#3084, @MichaelChirico).
+
+### Lint accuracy fixes: removing false negatives
+
+* `vector_logic_linter()` again finds `&&`/`||` usage in filtering expressions in function bodies like `\() filter(x, A && B)` (#3082, @MichaelChirico).
+* `seq_linter()` now flags `seq(1, n)` and `seq(from = 1, to = n)` calls, recommending `seq_len()` or `seq_along()` (#2661, @MichaelChirico).
+* `string_boundary_linter()` also recommends `startsWith()` for `substr(s, 0, n)` and `substring(s, 0, n)` (#3029, @fly1d).
+* `is_numeric_linter()` flags redundant `is.numeric(x) || is.integer(x)` checks even when other conditions are part of the `||` chain (#1636, @MichaelChirico).
+
+## Notes
+
+* `string_boundary_linter()` provides fixed-string replacements in its lint message, recommends `str_starts()`/`str_ends()` with `fixed()` for `{stringr}` calls, and clarifies the reasons for inefficiency (#1333, @MichaelChirico).
+
+# lintr (3.4.0)
+
+## Deprecations & breaking changes
+
+* Six linters fully deprecated in the previous release are now removed: `consecutive_stopifnot_linter()`, `extraction_operator_linter()`, `no_tab_linter()`, `single_quotes_linter()`, `unnecessary_nested_if_linter()`, and `unneeded_concatenation_linter()`.
+* `assignment_linter()` only allows `<-` by default, i.e., `<<-` is now excluded (consistent with the defaults for `undesirable_operator_linter()`; #2717, @MichaelChirico).
+* Arguments `allow_cascading_assign=`, `allow_right_assign=`, and `allow_pipe_assign=` to `assignment_linter()` are now removed. Use `operator=` instead.
+* Argument `interpret_glue` to `object_usage_linter()`, marked deprecated in the previous release, is now defunct. Use `interpret_extensions=` instead; see the 3.3.0-1 release notes and `?object_usage_linter` for more.
+
+## Bug fixes
+
+* Excluding `cyclocomp_linter()` in `available_linters()` or `linters_with_tags()`, which requires the weak dependency {cyclocomp}, no longer emits a warning if {cyclocomp} is not available (#2909, @MichaelChirico).
+* `repeat_linter()` no longer errors when `while` in `while (TRUE)` is in a column to the right of `}` (#2828, @MichaelChirico).
+* `get_source_expression(lines=)` and `lint(text=)` correctly handle text with unmarked encoding (#3046, @MichaelChirico).
+* `lint(exclude=)` doesn't fail cryptically when provided a regex with capture groups (#2831, @MichaelChirico).
+
+## New and improved features
+
+* Rmd files with explicit `eval=FALSE` chunks are skipped (#1964, @MichaelChirico). Complex cases like `eval=obj` where `obj=FALSE` and `opts_chunk$set(eval = FALSE)` are not yet supported; the former likely never will be. This obviates the previous workaround requiring such chunks to use plain markdown highlighting gates like ```` ```r ```` (i.e., without {knitr} mark-up).
+
+### Linter improvements
+
+* `indentation_linter()` correctly enforces the updated Tidyverse guidelines around multi-line function definitions, namely that double-indented functions are no longer recommended, in favor of single-indented formals separated from the function body by a line with `) {` (#2830, @MichaelChirico).
+* `sort_linter()`
+   + recommends usage of `!is.unsorted(x)` over `identical(x, sort(x))` (#2921, @Bisaloo).
+   + recommends usage of `sort(x, decreasing = TRUE)` over `rev(sort(x))` (#3066, @Bisaloo).
+* `paste_linter()`
+   + lints `expression(paste(., sep = ""))` because the `paste` inside an expression doesn't support the `sep` argument (#2945, @mcol).
+   + recommends `deparse1(x)` in favor of `paste(deparse(x), collapse = ...)` (#2615, @emmanuel-ferdman).
+* `namespace_linter()` detects functions accessed with `::` or `:::` when they are already imported into the package's `NAMESPACE` (#2081, @MichaelChirico).
+* `backport_linter()` now exhaustively covers all exported symbols introduced throughout R's history back to R 3.0.0, including many symbols never mentioned in NEWS.
+* General handling of logic around where comments can appear in code has been improved (#2822, @MichaelChirico). In many cases, this is a tiny robustness fix for weird edge cases unlikely to be found in practice, but in others, this improves practical linter precision (reduced false positives and/or false negatives). The affected linters (with annotations for changes noteworthy enough to have gotten a dedicated bug) are:
+   + `brace_linter()`
+   + `coalesce_linter()`
+   + `comparison_negation_linter()` #2826
+   + `conjunct_test_linter()` #2827
+   + `empty_assignment_linter()`
+   + `expect_comparison_linter()`
+   + `fixed_regex_linter()` #2827
+   + `if_switch_linter()`
+   + `ifelse_censor_linter()` #2826
+   + `implicit_assignment_linter()`
+   + `length_test_linter()`
+   + `literal_coercion_linter()` #2824
+   + `matrix_apply_linter()` #2825
+   + `nzchar_linter()` #2826
+   + `object_length_linter()` #2827
+   + `object_name_linter()` #2827
+   + `object_usage_linter()`
+   + `outer_negation_linter()` #2827
+   + `redundant_equals_linter()`
+   + `regex_subset_linter()`
+   + `seq_linter()`
+   + `sort_linter()`
+   + `sprintf_linter()` #2827
+   + `string_boundary_linter()`
+   + `strings_as_factors_linter()`
+   + `unnecessary_concatenation_linter()` #2827
+   + `unnecessary_lambda_linter()` #2827
+   + `unnecessary_nesting_linter()` #2827
+   + `unnecessary_placeholder_linter()`
+   + `unreachable_code_linter()` #2827
+   + `vector_logic_linter()` #2826
+
+### Lint accuracy fixes: removing false positives
+
+* `if_switch_linter()`
+   + no longer produces a false positive when comparing to empty strings (`""`, `''`, or raw strings like `R"()"`), which cannot be used as `switch()` case names (#2835, @emmanuel-ferdman).
+   + handles expressions/branches without `{` correctly (#3042, @MichaelChirico)
+* `undesirable_operator_linter(call_is_undesirable = FALSE)` now correctly skips prefix notation like `` `:::`(pkg, fun) `` (#2999, @emmanuel-ferdman).
+* `unnecessary_nesting_linter()` treats `=` assignment the same as `<-` for several pieces of logic (#2245 and #2829, @MichaelChirico).
+* `vector_logic_linter()` ignores scalar operators (`&&`/`||`) inside anonymous functions within `filter()`/`subset()` (#2935, @emmanuel-ferdman).
+* `unnecessary_lambda_linter()` skips lambdas with an outer unary operator like `sapply(x, \(xi) !all(xi))` (#2742, @MichaelChirico).
+
+## Notes
+
+* {lintr} now requires R 4.1.0
+* Internal code is refactored to avoid `xml2::xml_ns()` for e.g. 5-30% end-to-end speed improvement in `lint_package()`
 
 # lintr (3.3.0-1)
 

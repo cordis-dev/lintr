@@ -28,7 +28,7 @@ cyclocomp_linter <- function(complexity_limit = 15L) {
     return()
 
     complexity <- try_silently(
-      cyclocomp::cyclocomp(parse(text = source_expression$content))
+      cyclocomp::cyclocomp(parse(text = source_expression$content, keep.source = FALSE))
     )
     if (inherits(complexity, "try-error") || complexity <= complexity_limit) {
       return(list())

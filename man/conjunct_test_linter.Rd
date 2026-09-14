@@ -10,8 +10,7 @@ conjunct_test_linter(
 )
 }
 \arguments{
-\item{allow_named_stopifnot}{Logical, \code{TRUE} by default. If \code{FALSE}, "named" calls to \code{stopifnot()},
-available since R 4.0.0 to provide helpful messages for test failures, are also linted.}
+\item{allow_named_stopifnot}{Logical, \code{TRUE} by default. If \code{FALSE}, "named" calls to \code{stopifnot()} are also linted.}
 
 \item{allow_filter}{Character naming the method for linting calls to \code{filter()}. The default, \code{"never"}, means
 \code{filter()} and \code{dplyr::filter()} calls are linted; \code{"not_dplyr"} means only \code{dplyr::filter()} calls are linted;
@@ -19,7 +18,7 @@ and \code{"always"} means no calls to \code{filter()} are linted. Calls like \co
 }
 \description{
 For readability of test outputs, testing only one thing per call to
-\code{\link[testthat:logical-expectations]{testthat::expect_true()}} is preferable, i.e.,
+\code{\link[testthat:expect_true]{testthat::expect_true()}} is preferable, i.e.,
 \verb{expect_true(A); expect_true(B)} is better than \code{expect_true(A && B)}, and
 \verb{expect_false(A); expect_false(B)} is better than \code{expect_false(A || B)}.
 }

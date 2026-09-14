@@ -21,6 +21,28 @@ flatten_lints <- function(x) {
 # any function using unlist or c was dropping the classnames,
 # so need to brute force copy the objects
 flatten_list <- function(x, class) {
+  if (length(x) == 0L) {
+    return(list())
+  }
+  if (inherits(x, class)) {
+    return(list(x))
+  }
+  if (is.list(x)) {
+    is_flat <- TRUE
+    for (i in seq_along(x)) {
+      if (!inherits(x[[i]], class)) {
+        is_flat <- FALSE
+        break
+      }
+    }
+    if (is_flat) {
+      if (!is.null(names(x))) {
+        names(x) <- NULL
+      }
+      return(x)
+    }
+  }
+
   outer_env <- new.env(parent = emptyenv())
   outer_env$res <- list()
   outer_env$itr <- 1L
@@ -50,12 +72,13 @@ fix_names <- function(x, default) {
 
 linter_auto_name <- function(which = -3L) {
   sys_call <- sys.call(which = which)
-  nm <- paste(deparse(sys_call, 500L), collapse = " ")
+  nm <- deparse1(sys_call)
   regex <- rex(start, one_or_more(alnum %or% "." %or% "_" %or% ":"))
   if (re_matches(nm, regex)) {
     match_data <- re_matches(nm, regex, locations = TRUE)
-    nm <- substr(nm, start = 1L, stop = match_data[1L, "end"])
-    nm <- re_substitutes(nm, rex(start, alnums, "::"), "")
+    nm <- nm |>
+      substr(start = 1L, stop = match_data[1L, "end"]) |>
+      re_substitutes(rex(start, alnums, "::"), "")
   }
   nm
 }
@@ -98,7 +121,7 @@ get_content <- function(lines, info, needs_braces = FALSE) {
   if (!missing(info)) {
     # put in data.frame-like format
     if (is_node(info)) {
-      info <- lapply(xml2::xml_attrs(info), as.integer)
+      info <- lapply(xml_attrs_(info), as.integer)
     }
 
     lines <- lines[seq(info$line1, info$line2)]
@@ -156,7 +179,32 @@ Linter <- function(fun, name = linter_auto_name(), linter_level = c(NA_character
   fun
 }
 
-read_lines <- function(file, encoding = settings$encoding, ...) {
+ensure_utf8 <- function(lines, encoding = NULL) {
+  if (is.null(encoding) || is.na(encoding)) {
+    encoding <- ""
+  }
+
+  if (encoding == "" && l10n_info()[["UTF-8"]]) {
+    encoding <- "UTF-8"
+  }
+
+  if (encoding == "UTF-8") {
+    Encoding(lines) <- "UTF-8"
+    return(lines)
+  }
+
+  is_utf8 <- Encoding(lines) == "UTF-8"
+  if (any(is_utf8)) {
+    return(lines)
+  }
+
+  lines_conv <- iconv(lines, from = encoding, to = "UTF-8")
+  lines[!is.na(lines_conv)] <- lines_conv[!is.na(lines_conv)]
+  Encoding(lines) <- "UTF-8"
+  lines
+}
+
+read_lines <- function(file, ...) {
   outer_env <- new.env(parent = emptyenv())
   outer_env$terminal_newline <- TRUE
   lines <- withCallingHandlers(
@@ -168,9 +216,6 @@ read_lines <- function(file, encoding = settings$encoding, ...) {
       }
     }
   )
-  lines_conv <- iconv(lines, from = encoding, to = "UTF-8")
-  lines[!is.na(lines_conv)] <- lines_conv[!is.na(lines_conv)]
-  Encoding(lines) <- "UTF-8"
   attr(lines, "terminal_newline") <- outer_env$terminal_newline
   lines
 }
@@ -189,6 +234,18 @@ re_matches_logical <- function(x, regex, ...) {
     res <- complete.cases(res)
   }
   res
+}
+
+#' re_matches with type-stable locations output for the overall match
+#' @noRd
+re_matches_locations <- function(x, regex, ...) {
+  m <- regexpr(regex, x, perl = TRUE, ...)
+  match_start <- as.vector(m)
+  match_end <- match_start + attr(m, "match.length") - 1L
+  matched <- match_start != -1L
+  match_start[!matched] <- NA_integer_
+  match_end[!matched] <- NA_integer_
+  data.frame(start = match_start, end = match_end)
 }
 
 #' Extract text from `STR_CONST` nodes
@@ -232,7 +289,7 @@ get_r_string <- function(s, xpath = NULL) {
     if (is.null(xpath)) {
       s <- xml_text(s)
     } else {
-      s <- xml_find_chr(s, sprintf("string(%s)", xpath))
+      s <- xml_find_chr_(s, sprintf("string(%s)", xpath))
     }
   }
   r_string_from_parse_text(s)
@@ -263,8 +320,9 @@ is_tainted <- function(lines) {
 #' @param ref_help Help page to refer users hitting an error to.
 #' @noRd
 check_dots <- function(dot_names, ref_calls, ref_help = as.character(sys.call(-1L)[[1L]])) {
-  valid_args <- unlist(lapply(ref_calls, function(f) names(formals(f))))
-  is_valid <- dot_names %in% valid_args
+  valid_args <- unlist(lapply(ref_calls, \(f) names(formals(f))))
+  # TODO(#2502): needn't check is.na() after R 4.2.0
+  is_valid <- is.na(dot_names) | !nzchar(dot_names) | dot_names %in% valid_args
   if (all(is_valid)) {
     return(invisible())
   }

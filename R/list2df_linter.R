@@ -39,7 +39,7 @@ list2df_linter <- function() {
   Linter(linter_level = "expression", function(source_expression) {
     xml_calls <- source_expression$xml_find_function_calls("do.call")
 
-    xml_calls_nolambda <- xml_find_all(
+    xml_calls_nolambda <- xml_find_all_(
       xml_calls,
       "./following-sibling::expr[1][SYMBOL or STR_CONST]"
     )
@@ -49,7 +49,8 @@ list2df_linter <- function() {
     ]
 
     xml_nodes_to_lints(
-      xml2::xml_parent(bad_expr),
+      # nolint next: undesirable_function_name_linter.
+      xml_parent(bad_expr),
       source_expression = source_expression,
       lint_message = paste(
         "Use `list2DF(lst)` instead of `do.call(cbind.data.frame, lst)`.",

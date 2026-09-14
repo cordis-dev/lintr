@@ -68,7 +68,8 @@ get_source_expressions <- function(filename, lines = NULL) {
   old_lang <- set_lang("en")
   on.exit(reset_lang(old_lang))
 
-  source_expression$lines <- lines %||% read_lines(filename)
+  encoding <- if (is.null(lines)) settings$encoding
+  source_expression$lines <- ensure_utf8(lines %||% read_lines(filename), encoding)
 
   # Only regard explicit attribute terminal_newline=FALSE as FALSE and all other cases (e.g. NULL or TRUE) as TRUE.
   terminal_newline <- !isFALSE(attr(source_expression$lines, "terminal_newline", exact = TRUE))
@@ -77,11 +78,11 @@ get_source_expressions <- function(filename, lines = NULL) {
   source_expression$lines <- extract_r_source(
     filename = source_expression$filename,
     lines = source_expression$lines,
-    error = function(e) lint_rmd_error(e, source_expression)
+    error = \(e) lint_rmd_error(e, source_expression)
   )
   names(source_expression$lines) <- seq_along(source_expression$lines)
   source_expression$content <- get_content(source_expression$lines)
-  parsed_content <- get_source_expression(source_expression, error = function(e) lint_parse_error(e, source_expression))
+  parsed_content <- get_source_expression(source_expression, error = \(e) lint_parse_error(e, source_expression))
 
   # Currently no way to distinguish the source of the warning
   #   from the message itself, so we just grep the source for the
@@ -218,7 +219,7 @@ parser_warning_regexes <- list(
 #'
 #' @noRd
 fixup_line <- function(line) {
-  nchars <- tryCatch(nchar(line, type = "chars"), error = function(e) NA_integer_)
+  nchars <- tryCatch(nchar(line, type = "chars"), error = \(e) NA_integer_)
   if (is.na(nchars)) {
     ""
   } else {
@@ -315,6 +316,7 @@ lint_parse_error_r42 <- function(message_info, source_expression) {
 #' @return A [Lint()] based on trying to extract information from the error message of `e`.
 #'
 #' @noRd
+# TODO(R>=4.3.0): remove this
 lint_parse_error_nonstandard <- function(e, source_expression) {
   if (grepl("invalid multibyte character in parser at line", e$message, fixed = TRUE)) {
     # nocov start: platform-specific
@@ -530,9 +532,9 @@ get_single_source_expression <- function(loc,
     column = parsed_content[loc, "col1"],
     lines = expr_lines,
     parsed_content = pc,
-    xml_parsed_content = xml2::xml_missing(),
+    xml_parsed_content = xml_missing(),
     # Placeholder for xml_find_function_calls, if needed (e.g. on R <= 4.0.5 with input source "\\")
-    xml_find_function_calls = build_xml_find_function_calls(xml2::xml_missing()),
+    xml_find_function_calls = build_xml_find_function_calls(xml_missing()),
     content = content
   )
 }
@@ -575,7 +577,7 @@ get_source_expression <- function(source_expression, error = identity) {
   }
 
   source_expression$parsed_content <- parsed_content
-  fix_octal_escapes(fix_eq_assigns(fix_tab_indentations(source_expression)), source_expression$lines)
+  fix_octal_escapes(fix_tab_indentations(source_expression), source_expression$lines)
 }
 
 maybe_append_expression_xml <- function(expressions, xml_parsed_content) {
@@ -583,8 +585,8 @@ maybe_append_expression_xml <- function(expressions, xml_parsed_content) {
     return(expressions)
   }
   expression_xmls <- lapply(
-    xml_find_all(xml_parsed_content, "/exprlist/*"),
-    function(top_level_expr) xml2::xml_add_parent(xml2::xml_new_root(top_level_expr), "exprlist")
+    xml_find_all_(xml_parsed_content, "/exprlist/*"),
+    \(top_level_expr) xml2::xml_add_parent(xml2::xml_new_root(top_level_expr), "exprlist")
   )
   for (i in seq_along(expressions)) {
     expressions[[i]]$xml_parsed_content <- expression_xmls[[i]]
@@ -625,7 +627,7 @@ fix_tab_indentations <- function(source_expression) {
 
   tab_cols <- gregexpr("\t", source_expression[["lines"]], fixed = TRUE)
   names(tab_cols) <- seq_along(tab_cols)
-  matched_lines <- vapply(tab_cols, function(line_match) !is.na(line_match[1L]) && line_match[1L] > 0L, logical(1L))
+  matched_lines <- vapply(tab_cols, \(line_match) !is.na(line_match[1L]) && line_match[1L] > 0L, logical(1L))
   if (!any(matched_lines)) {
     return(parse_data)
   }
@@ -675,89 +677,6 @@ tab_offsets <- function(tab_columns) {
   )
 }
 
-# This function wraps equal assign expressions in a parent expression so they
-# are the same as the corresponding <- expression
-fix_eq_assigns <- function(pc) {
-  if (is.null(pc) || any(c("equal_assign", "expr_or_assign_or_help") %in% pc$token)) {
-    return(pc)
-  }
-
-  eq_assign_locs <- which(pc$token == "EQ_ASSIGN")
-  # check whether the equal-assignment is the final entry
-  if (length(eq_assign_locs) == 0L || tail(eq_assign_locs, 1L) == nrow(pc)) {
-    return(pc)
-  }
-
-  prev_locs <- vapply(eq_assign_locs, prev_with_parent, pc = pc, integer(1L))
-  next_locs <- vapply(eq_assign_locs, next_with_parent, pc = pc, integer(1L))
-  expr_locs <- prev_locs != lag(next_locs)
-  expr_locs[is.na(expr_locs)] <- TRUE
-
-  id_itr <- max(pc$id)
-
-  true_locs <- which(expr_locs)
-  n_expr <- length(true_locs)
-
-  supplemental_content <- data.frame(
-    line1 = integer(n_expr),
-    col1 = integer(n_expr),
-    line2 = integer(n_expr),
-    col2 = integer(n_expr),
-    id = integer(n_expr),
-    parent = integer(n_expr),
-    token = character(n_expr),
-    terminal = logical(n_expr),
-    text = character(n_expr)
-  )
-
-  for (i in seq_len(n_expr)) {
-    start_loc <- true_locs[i]
-    end_loc <- true_locs[i]
-
-    prev_loc <- prev_locs[start_loc]
-    next_loc <- next_locs[end_loc]
-
-    id_itr <- id_itr + 1L
-    supplemental_content[i, ] <- list(
-      pc[prev_loc, "line1"],
-      pc[prev_loc, "col1"],
-      pc[next_loc, "line2"],
-      pc[next_loc, "col2"],
-      id_itr,
-      pc[eq_assign_locs[true_locs[i]], "parent"],
-      "expr", # R now uses "equal_assign"
-      FALSE,
-      ""
-    )
-
-    new_parent_locs <- c(
-      prev_locs[start_loc:end_loc],
-      eq_assign_locs[start_loc:end_loc],
-      next_locs[start_loc:end_loc],
-      next_loc
-    )
-    pc[new_parent_locs, "parent"] <- id_itr
-  }
-  rownames(supplemental_content) <- supplemental_content$id
-  res <- rbind(pc, supplemental_content)
-  res[order(res$line1, res$col1, res$line2, res$col2, res$id), ]
-}
-
-step_with_parent <- function(pc, loc, offset) {
-  id <- pc$id[loc]
-  parent_id <- pc$parent[loc]
-
-  with_parent <- pc[pc$parent == parent_id, ]
-  with_parent <- with_parent[order(with_parent$line1, with_parent$col1, with_parent$line2, with_parent$col2), ]
-
-  loc <- which(with_parent$id == id)
-
-  which(pc$id == with_parent$id[loc + offset])
-}
-
-prev_with_parent <- function(pc, loc) step_with_parent(pc, loc, offset = -1L)
-next_with_parent <- function(pc, loc) step_with_parent(pc, loc, offset = 1L)
-
 top_level_expressions <- function(pc) {
   if (is.null(pc)) {
     return(integer(0L))
@@ -767,6 +686,7 @@ top_level_expressions <- function(pc) {
 
 # workaround for bad parse data bug for octal escapes
 #   https://bugs.r-project.org/show_bug.cgi?id=18323
+# TODO(R>=4.3.0): remove this
 fix_octal_escapes <- function(pc, lines) {
   # subset first to prevent using nchar() on MBCS input
   is_str_const <- pc$token == "STR_CONST"

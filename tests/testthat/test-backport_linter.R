@@ -7,9 +7,9 @@ test_that("backport_linter produces error when R version misspecified", {
 
 test_that("backport_linter detects backwards-incompatibility", {
   # default should be current R version; all of these are included on our dependency
-  expect_lint(".getNamespaceInfo(dir.exists(lapply(x, toTitleCase)))", NULL, backport_linter())
-  expect_lint(".getNamespaceInfo(dir.exists(lapply(x, toTitleCase)))", NULL, backport_linter("release"))
-  expect_lint(".getNamespaceInfo(dir.exists(lapply(x, toTitleCase)))", NULL, backport_linter("devel"))
+  expect_no_lint(".getNamespaceInfo(dir.exists(lapply(x, toTitleCase)))", backport_linter())
+  expect_no_lint(".getNamespaceInfo(dir.exists(lapply(x, toTitleCase)))", backport_linter("release"))
+  expect_no_lint(".getNamespaceInfo(dir.exists(lapply(x, toTitleCase)))", backport_linter("devel"))
 
   expect_lint(
     "numToBits(2)",
@@ -61,13 +61,41 @@ test_that("backport_linter detects backwards-incompatibility", {
   )
 
   # except is honored
-  expect_lint(
+  expect_no_lint(
     trim_some("
       numToBits(2)
       R_user_dir('mypkg')
     "),
-    NULL,
     backport_linter("3.0.0", except = c("numToBits", "R_user_dir"))
+  )
+
+  # binary operators (%||%, etc.)
+  expect_lint(
+    "a %||% b",
+    rex::rex(
+      "%||% (R 4.4.0) is not always available ",
+      "for requested dependency (R >= 4.3.0)."
+    ),
+    backport_linter("4.3.0")
+  )
+
+  # functions not mentioned in NEWS or introduced in patch releases
+  expect_lint(
+    "zstdfile('foo.zst')",
+    rex::rex(
+      "zstdfile (R 4.5.0) is not always available ",
+      "for requested dependency (R >= 4.4.0)."
+    ),
+    backport_linter("4.4.0")
+  )
+
+  expect_lint(
+    "str2lang('x + 1')",
+    rex::rex(
+      "str2lang (R 3.6.1) is not always available ",
+      "for requested dependency (R >= 3.6.0)."
+    ),
+    backport_linter("3.6.0")
   )
 })
 

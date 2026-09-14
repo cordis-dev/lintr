@@ -11,9 +11,7 @@ object_usage_linter(
 )
 }
 \arguments{
-\item{interpret_glue}{(Deprecated) If \code{TRUE}, interpret \code{\link[glue:glue]{glue::glue()}} calls to avoid
-false positives caused by local variables which are only used in a glue expression.
-Provide \code{interpret_extensions} instead, see below.}
+\item{interpret_glue}{(Defunct)}
 
 \item{interpret_extensions}{Character vector of extensions to interpret. These are meant to cover known cases where
 variables may be used in ways understood by the reader but not by \code{checkUsage()} to avoid false positives.
@@ -65,6 +63,7 @@ The following linters are tagged with 'package_development':
 \item{\code{\link{expect_null_linter}}}
 \item{\code{\link{expect_s3_class_linter}}}
 \item{\code{\link{expect_s4_class_linter}}}
+\item{\code{\link{expect_shape_linter}}}
 \item{\code{\link{expect_true_false_linter}}}
 \item{\code{\link{expect_type_linter}}}
 \item{\code{\link{package_hooks_linter}}}

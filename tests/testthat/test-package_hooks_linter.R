@@ -111,7 +111,9 @@ test_that("package_hooks_linter blocks invalid .onLoad() / .onAttach() arguments
   # NB: QC.R allows ... arguments to be passed, but disallow this flexibility in the linter.
   expect_lint(".onLoad <- function() { }", onload_msg, linter)
   expect_lint(".onLoad <- function(lib) { }", onload_msg, linter)
+  expect_lint(".onLoad = function(lib) { }", onload_msg, linter)
   expect_lint(".onLoad <- function(lib, pkg, third) { }", onload_msg, linter)
+  expect_lint(".onLoad = function(lib, pkg, third) { }", onload_msg, linter)
   expect_lint(".onLoad <- function(lib, ...) { }", onload_msg, linter)
 })
 
@@ -149,6 +151,11 @@ test_that("package_hooks_linter blocks attaching namespaces", {
   )
   expect_lint(
     ".onLoad <- function(lib, pkg) { d(e(f(library(foo)))) }",
+    rex::rex("Don't alter the search() path in .onLoad() by calling library()."),
+    linter
+  )
+  expect_lint(
+    ".onLoad = function(lib, pkg) { d(e(f(library(foo)))) }",
     rex::rex("Don't alter the search() path in .onLoad() by calling library()."),
     linter
   )
@@ -210,6 +217,13 @@ test_that("package_hooks_linter detects bad argument names in 'teardown' hooks",
     rex::rex(".onDetach()", lint_msg_part),
     linter
   )
+
+  # assignment operator doesn't matter
+  expect_lint(
+    ".onDetach = function(xxx) { }",
+    rex::rex(".onDetach()", lint_msg_part),
+    linter
+  )
   expect_lint(
     ".Last.lib <- function(yyy) { }",
     rex::rex(".Last.lib()", lint_msg_part),
@@ -256,7 +270,6 @@ test_that("package_hooks_linter detects bad argument names in 'teardown' hooks",
 })
 
 test_that("function shorthand is handled", {
-  skip_if_not_r_version("4.1.0")
   linter <- package_hooks_linter()
 
   expect_lint(

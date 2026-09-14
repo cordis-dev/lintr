@@ -1,5 +1,5 @@
 test_that("default styles are linted correctly", {
-  linters <-  list(
+  linters <- list(
     symbols_linter = object_name_linter("symbols"),
     CamelCase_linter = object_name_linter("CamelCase"),
     camelCase_linter = object_name_linter("camelCase"),
@@ -26,7 +26,7 @@ test_that("default styles are linted correctly", {
       function(nm, ok) {
         lapply(
           setdiff(1L:30L, ok),
-          function(bad) list(linter = nm, line_number = bad)
+          \(bad) list(linter = nm, line_number = bad)
         )
       },
       names(ok_lines),
@@ -305,8 +305,6 @@ test_that("complex LHS of := doesn't cause false positive", {
 })
 
 test_that("function shorthand also lints", {
-  skip_if_not_r_version("4.1.0")
-
   expect_lint("aBc <- \\() NULL", "function name style", object_name_linter())
 })
 
@@ -372,5 +370,12 @@ test_that("generics assigned with '=' or <<- are registered", {
       g.default <- function(x) {}
     "),
     linter
+  )
+})
+
+test_that("object_name_linter checks that regexes is a character vector", {
+  expect_error(
+    object_name_linter(styles = "snake_case", regexes = 123L),
+    "must be a.*character.*vector"
   )
 })

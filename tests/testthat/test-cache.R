@@ -35,37 +35,37 @@ fhash <- function(filename) {
 
 test_that("clear_cache deletes the directory if no file is given", {
   local_mocked_bindings(
-    read_settings = function(...) invisible(...),
-    unlink = function(...) list(...)
+    read_settings = \(...) invisible(...),
+    unlink = \(...) list(...)
   )
 
   expect_identical(clear_cache(file = NULL, path = "."), list(".", recursive = TRUE))
 })
 
-test_that("lint with cache uses the provided relative cache directory", {
+test_that("lint with cache uses the provided relative cache directory", { # nofuzz: assignment
   path <- withr::local_tempdir("my_cache_dir")
   linter <- assignment_linter()
 
   # create the cache
-  expect_lint("a <- 1", NULL, linter, cache = path)
+  expect_no_lint("a <- 1", linter, cache = path)
   expect_true(dir.exists(path))
   expect_length(list.files(file.path(path)), 1L)
 
   # read the cache
-  expect_lint("a <- 1", NULL, linter, cache = path)
+  expect_no_lint("a <- 1", linter, cache = path)
   expect_true(dir.exists(path))
 })
 
-test_that("it works outside of a package", {
+test_that("it works outside of a package", { # nofuzz: assignment
   linter <- assignment_linter()
 
-  local_mocked_bindings(find_package = function(...) NULL)
+  local_mocked_bindings(find_package = \(...) NULL)
   path <- withr::local_tempfile(pattern = "my_cache_dir_")
   expect_false(dir.exists(path))
-  expect_lint("a <- 1", NULL, linter, cache = path)
+  expect_no_lint("a <- 1", linter, cache = path)
   expect_true(dir.exists(path))
   expect_length(list.files(path), 1L)
-  expect_lint("a <- 1", NULL, linter, cache = path)
+  expect_no_lint("a <- 1", linter, cache = path)
   expect_true(dir.exists(path))
 })
 
@@ -99,4 +99,81 @@ test_that("cache = TRUE works with nolint", {
 
   writeLines("1+1 # nolint\n", file)
   expect_length(lint(file, linters, cache = TRUE), 0L)
+})
+
+test_that("cached lints adjust correctly right when line numbers shift up/down or vanish", {
+  path <- withr::local_tempdir()
+  file <- withr::local_tempfile(fileext = ".R")
+  linter <- commas_linter()
+
+  # Initial run and exact match at line 2 (`x <- c(1,2)` triggers a comma spacing lint)
+  writeLines(c("# top", "x <- c(1,2)", "# bottom"), file)
+  l1 <- lint(filename = file, linters = linter, cache = path)
+  expect_length(l1, 1L)
+  expect_identical(l1[[1L]]$line_number, 2L)
+
+  # Exact hit when exact line matches after modifying surrounding comments
+  writeLines(c("# top modified", "x <- c(1,2)", "# bottom modified"), file)
+  l2 <- lint(filename = file, linters = linter, cache = path)
+  expect_length(l2, 1L)
+  expect_identical(l2[[1L]]$line_number, 2L)
+
+  # Line shifts earlier: move expression to line 1
+  writeLines(c("x <- c(1,2)", "# mid modified", "# bottom"), file)
+  l_low <- lint(filename = file, linters = linter, cache = path)
+  expect_length(l_low, 1L)
+  expect_identical(l_low[[1L]]$line_number, 1L)
+
+  # Line shifts later: move expression to line 3
+  writeLines(c("# top modified again", "# mid modified again", "x <- c(1,2)"), file)
+  l_high <- lint(filename = file, linters = linter, cache = path)
+  expect_length(l_high, 1L)
+  expect_identical(l_high[[1L]]$line_number, 3L)
+
+  # Line text no longer present (hidden by nolint)
+  writeLines(c("# top modified again", "# mid modified again", "x <- c(1,2) # nolint"), file)
+  expect_length(lint(filename = file, linters = linter, cache = path), 0L)
+})
+
+test_that("cache loading muffles load warnings", {
+  path <- withr::local_tempdir()
+  file <- withr::local_tempfile(fileext = ".R", lines = "a <- 1")
+  linter <- assignment_linter()
+
+  # Populate cache
+  expect_length(lint(filename = file, linters = linter, cache = path), 0L)
+
+  # Very rare for load() to warn(), but previously we used tryCatch() incorrectly
+  #   for that case, so here we mock it to warn to ensure we handle it correctly.
+  local_mocked_bindings(load = \(...) cli::cli_warn("fake warning"), .package = "base")
+  expect_length(lint(filename = file, linters = linter, cache = path), 0L)
+})
+
+test_that("cache loading warns gracefully on read failures from a corrupted disk cache", {
+  path <- withr::local_tempdir()
+  file <- withr::local_tempfile(fileext = ".R", lines = "a <- 1")
+  linter <- assignment_linter()
+
+  # Populate cache cleanly
+  expect_length(lint(filename = file, linters = linter, cache = path), 0L)
+
+  # Simulate a corrupted or truncated binary cache file (e.g., interrupted session right during save).
+  # normalize_path() ensures exact SHA1 hash match across Windows path separators and short filenames.
+  cache_file <- get_cache_file_path(normalize_path(file), path)
+  expect_true(file.exists(cache_file))
+  writeLines("corrupted non-Rda binary header", cache_file)
+
+  # When load encounters an invalid header during public lint(), a descriptive warning is bubbled up
+  expect_warning(lint(filename = file, linters = linter, cache = path), "Could not load cache file")
+})
+
+test_that("parser errors and parser warnings are cached appropriately", {
+  path <- withr::local_tempdir("cond_cache_dir")
+  file_err <- withr::local_tempfile(fileext = ".R", lines = "function() {)")
+  expect_gt(length(lint(file_err, cache = path)), 0L)
+  expect_gt(length(lint(file_err, cache = path)), 0L)
+
+  file_warn <- withr::local_tempfile(fileext = ".R", lines = "100000000000000000000000000000000000L")
+  expect_gt(length(lint(file_warn, cache = path)), 0L)
+  expect_gt(length(lint(file_warn, cache = path)), 0L)
 })

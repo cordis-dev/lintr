@@ -7,9 +7,14 @@
 any_is_na_linter()
 }
 \description{
-\code{\link[base:NA]{base::anyNA()}} exists as a replacement for \code{any(is.na(x))} which is more efficient
+\code{\link[base:anyNA]{base::anyNA()}} exists as a replacement for \code{any(is.na(x))} which is more efficient
 for simple objects, and is at worst equally efficient.
 Therefore, it should be used in all situations instead of the latter.
+}
+\details{
+This also lints \code{NA \%in\% x}, which is also more readably expressed as \code{anyNA(x)}. In
+this case, note a subtle difference of behavior, namely that \code{is.na(NaN)} is \code{TRUE}
+while \code{NA \%in\% NaN} is \code{FALSE}.
 }
 \examples{
 # will produce lints

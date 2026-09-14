@@ -43,19 +43,19 @@
 #' @seealso [linters] for a complete list of linters available in lintr.
 #' @export
 length_test_linter <- function() {
-  xpath <- glue::glue("
+  xpath <- glue("
   following-sibling::expr[{ xp_or(infix_metadata$xml_tag[infix_metadata$comparator]) }]
     /parent::expr
   ")
 
   Linter(linter_level = "expression", function(source_expression) {
     xml_calls <- source_expression$xml_find_function_calls(c("length", "nrow", "ncol", "NROW", "NCOL"))
-    bad_expr <- xml_find_all(xml_calls, xpath)
+    bad_expr <- xml_find_all_(xml_calls, xpath)
     bad_expr <- strip_comments_from_subtree(bad_expr)
 
     matched_function <- xp_call_name(bad_expr)
     expr_parts <- vapply(
-      lapply(bad_expr, xml_find_all, "expr[2]/*[not(self::COMMENT)]"),
+      lapply(bad_expr, xml_find_all_, "expr[2]/*[not(self::COMMENT)]"),
       xml_text,
       character(3L)
     )

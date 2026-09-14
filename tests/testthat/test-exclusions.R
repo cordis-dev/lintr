@@ -71,7 +71,7 @@ test_that("it gives the expected error message when there is mismatch between mu
   )
 })
 
-test_that("partial matching works for exclusions but warns if no linter found", {
+test_that("partial matching works for exclusions but warns if no linter found", { # nofuzz: assignment comment_injection
   withr::local_dir(test_path("dummy_projects", "project"))
 
   expect_warning(
@@ -168,7 +168,7 @@ test_that("#1442: is_excluded_files works if no global exclusions are specified"
   expect_length(lint_dir(tmp), 3L)
 })
 
-test_that("next-line exclusion works", {
+test_that("next-line exclusion works", { # nofuzz
   withr::local_options(
     lintr.exclude = "# NL",
     lintr.exclude_next = "# NLN",
@@ -178,30 +178,27 @@ test_that("next-line exclusion works", {
   linter <- assignment_linter()
 
   # blanket exclusion works
-  expect_lint(
+  expect_no_lint(
     trim_some("
       # NLN
       x = 1
     "),
-    NULL,
     linter
   )
 
   # specific exclusion works
-  expect_lint(
+  expect_no_lint(
     trim_some("
       # NLN: assignment_linter.
       x = 1
     "),
-    NULL,
     linter
   )
-  expect_lint(
+  expect_no_lint(
     trim_some("
       # NLN: assignment.
       x = 1
     "),
-    NULL,
     linter
   )
   expect_lint(
@@ -209,7 +206,7 @@ test_that("next-line exclusion works", {
       # NLN: line_length_linter.
       x = 1
     "),
-    rex::rex("Use one of <-, <<- for assignment, not =."),
+    rex::rex("Use <- for assignment, not =."),
     list(linter, line_length_linter())
   )
 
@@ -219,7 +216,69 @@ test_that("next-line exclusion works", {
       x = 1 # NLN: assignment_linter.
       x = 2
     "),
-    list(rex::rex("Use one of <-, <<- for assignment, not =."), line_number = 1L),
+    list(rex::rex("Use <- for assignment, not =."), line_number = 1L),
     linter
+  )
+})
+
+test_that("capture groups work as intended (#2831)", { # nofuzz: assignment comment_injection
+  linter <- assignment_linter()
+  lint_msg <- rex::rex("Use <- for assignment, not =.")
+
+  expect_lint("x = 1", lint_msg, linters = linter, exclude = "(a)|(b)")
+  expect_no_lint("a = 1", linters = linter, exclude = "(a)|(b)")
+  expect_no_lint("a = 1", linters = linter, exclude = "(?:a)|(?:b)")
+  expect_no_lint("a = 1", linters = linter, exclude = "(?:a)|(b)")
+  expect_no_lint("b = 1", linters = linter, exclude = "(a)|(?:b)")
+
+  # named groups
+  expect_no_lint("a = 1", linters = linter, exclude = "(?<group1>a)|(?<group2>b)")
+  # nested groups
+  expect_no_lint("a = 1", linters = linter, exclude = "((a)|(b))")
+
+  # exclude_start / exclude_end with capture groups
+  expect_no_lint(
+    trim_some("
+      x = 1 # nolint start
+      y = 2
+      z = 3 # nolint end
+    "),
+    linters = linter,
+    exclude_start = "(# nolint start)",
+    exclude_end = "(# nolint end)"
+  )
+
+  # exclude_next with capture groups
+  expect_lint(
+    trim_some("
+      x = 1 # nolint next
+      y = 2
+    "),
+    list(lint_msg, line_number = 1L),
+    linters = assignment_linter(),
+    exclude_next = "(# nolint next)"
+  )
+})
+
+test_that("malformed exclusions abort informatively via public API evaluation", {
+  path <- withr::local_tempdir()
+  expect_error(
+    lint_dir(path, exclusions = list(123L)),
+    "Full file exclusions must be.*character.*vectors of length 1"
+  )
+  expect_error(
+    lint_dir(path, exclusions = list(file.R = "bad_lines")),
+    "Full line exclusions must be.*numeric.*or.*integer.*vectors"
+  )
+})
+
+test_that("source exclusions work on non-existent identity file paths", {
+  expect_length(
+    lint(
+      "/no/such/file.R",
+      text = "x = 1 # nolint: assignment_linter.\n",
+      linters = assignment_linter()
+    ),
+    0L
   )
 })

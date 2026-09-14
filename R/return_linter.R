@@ -147,21 +147,21 @@ return_linter <- function(
   Linter(linter_level = "expression", function(source_expression) {
     xml <- source_expression$xml_parsed_content
     if (defer_except) {
-      assigned_functions <- xml_text(xml_find_all(xml, function_name_xpath))
+      assigned_functions <- xml_text(xml_find_all_(xml, function_name_xpath))
       except <-
         union(except, assigned_functions[re_matches_logical(assigned_functions, except_regex)])
       except_xpath <- glue(except_xpath_fmt, except = except)
       body_xpath <- glue(body_xpath_fmt, except_xpath = except_xpath)
     }
 
-    body_expr <- xml_find_all(xml, body_xpath)
+    body_expr <- xml_find_all_(xml, body_xpath)
 
     params$source_expression <- source_expression
 
     if (params$implicit && !params$allow_implicit_else) {
       # can't incorporate this into the body_xpath for implicit return style,
       #   since we still lint explicit returns for except= functions.
-      allow_implicit_else <- is.na(xml_find_first(body_expr, except_xpath))
+      allow_implicit_else <- xml_find_lgl_(body_expr, paste0("not(", except_xpath, ")"))
     } else {
       allow_implicit_else <- rep(params$allow_implicit_else, length(body_expr))
     }
@@ -178,20 +178,22 @@ return_linter <- function(
 
 nested_return_lints <- function(expr, params) {
   child_expr <- xml_children(expr)
+  # nocov start
   if (length(child_expr) == 0L) {
-    return(list())
+    cli_abort_internal("Reached an expression with no children in return_linter(); please report.")
   }
-  names(child_expr) <- xml_name(child_expr)
+  # nocov end
+  names(child_expr) <- xml_name_(child_expr)
 
   if (names(child_expr)[1L] == "OP-LEFT-BRACE") {
     brace_return_lints(child_expr, expr, params)
   } else if (names(child_expr)[1L] == "IF") {
     if_return_lints(child_expr, expr, params)
-  } else if (!is.na(xml_find_first(expr, "expr/SYMBOL_FUNCTION_CALL[text() = 'switch']"))) {
+  } else if (xml_find_lgl_(expr, "boolean(expr/SYMBOL_FUNCTION_CALL[text() = 'switch'])")) {
     switch_return_lints(child_expr, expr, params)
   } else {
     xml_nodes_to_lints(
-      xml_find_first(child_expr[[1L]], params$lint_xpath),
+      xml_find_first_(child_expr[[1L]], params$lint_xpath),
       source_expression = params$source_expression,
       lint_message = params$lint_message,
       type = params$type

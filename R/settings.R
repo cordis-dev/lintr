@@ -244,7 +244,7 @@ validate_exclusions <- function(exclusions) {
   exclusion_names <- names2(exclusions)
   has_names <- nzchar(exclusion_names)
   unnamed_is_string <-
-    vapply(exclusions[!has_names], function(x) is.character(x) && length(x) == 1L && !is.na(x), logical(1L))
+    vapply(exclusions[!has_names], \(x) is.character(x) && length(x) == 1L && !is.na(x), logical(1L))
   if (!all(unnamed_is_string)) {
     problematic_entries <- which(!has_names)[!unnamed_is_string] # nolint: object_usage_linter. TODO(#2252).
     cli_abort(c(
@@ -258,7 +258,7 @@ validate_exclusions <- function(exclusions) {
 validate_named_exclusion <- function(exclusions, idx) {
   entry <- exclusions[[idx]]
   if (is.list(entry)) {
-    valid_entry <- vapply(entry, function(x) is.numeric(x) && !anyNA(x), logical(1L))
+    valid_entry <- vapply(entry, \(x) is.numeric(x) && !anyNA(x), logical(1L))
   } else {
     valid_entry <- is.numeric(entry) && !anyNA(entry)
   }
@@ -279,27 +279,21 @@ get_setting <- function(setting, config, defaults) {
 reset_settings <- function() list2env(default_settings, envir = settings)
 
 find_default_encoding <- function(filename) {
-  if (is.null(filename)) {
-    return(NULL)
-  }
-
-  root_path <- find_package(filename, allow_rproj = TRUE)
-  rproj_enc <- get_encoding_from_dcf(find_rproj_at(root_path))
-  if (!is.null(rproj_enc)) {
-    return(rproj_enc)
-  }
-  rproj_enc
+  filename |>
+    find_package(allow_rproj = TRUE) |>
+    find_rproj_at() |>
+    get_encoding_from_dcf()
 }
 
 get_encoding_from_dcf <- function(file) {
-  if (is.null(file)) {
+  if (length(file) == 0L) {
     return(NULL)
   }
 
   encodings <- tryCatch(
     unname(drop(read.dcf(file, "Encoding"))),
-    error = function(e) NULL,
-    warning = function(e) NULL
+    error = \(e) NULL,
+    warning = \(e) NULL
   )
 
   encodings <- encodings[!is.na(encodings)]

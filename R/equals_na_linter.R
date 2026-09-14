@@ -49,13 +49,13 @@ equals_na_linter <- function() {
   Linter(linter_level = "expression", function(source_expression) {
     xml <- source_expression$xml_parsed_content
 
-    bad_expr <- xml_find_all(xml, xpath)
-    op <- xml_find_first(bad_expr, "EQ | NE | SPECIAL")
+    bad_expr <- xml_find_all_(xml, xpath)
+    op <- xml_find_chr_(bad_expr, "string(EQ | NE | SPECIAL)")
 
     xml_nodes_to_lints(
       bad_expr,
       source_expression,
-      lint_message = sprintf("Use is.na() instead of x %s NA", xml_text(op)),
+      lint_message = sprintf("Use is.na() instead of x %s NA", op),
       type = "warning"
     )
   })

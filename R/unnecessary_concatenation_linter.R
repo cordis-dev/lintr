@@ -52,10 +52,9 @@
 #' @seealso [linters] for a complete list of linters available in lintr.
 #' @export
 unnecessary_concatenation_linter <- function(allow_single_expression = TRUE) { # nolint: object_length_linter.
-  stopifnot(
-    is.logical(allow_single_expression),
-    length(allow_single_expression) == 1L
-  )
+  if (!is.logical(allow_single_expression) || length(allow_single_expression) != 1L) {
+    cli_abort("{.arg allow_single_expression} must be a single logical value.")
+  }
 
   msg_empty <-
     "Replace unnecessary c() by NULL or, whenever possible, vector() seeded with the correct type and/or length."
@@ -79,7 +78,7 @@ unnecessary_concatenation_linter <- function(allow_single_expression = TRUE) { #
   } else {
     zero_arg_cond <- glue("count(expr) = 1 and not( {to_pipe_xpath} )")
     one_arg_cond <- "count(expr) = 2 and not(expr[2]/SYMBOL[text() = '...'])"
-    path_to_non_constant <- glue("./expr[2][ {non_constant_cond} ]")
+    path_to_non_constant <- glue("boolean(./expr[2][ {non_constant_cond} ])")
 
     msg_const_expr <- paste(
       "Remove unnecessary c() of a constant expression.",
@@ -95,11 +94,11 @@ unnecessary_concatenation_linter <- function(allow_single_expression = TRUE) { #
 
   Linter(linter_level = "expression", function(source_expression) {
     xml_calls <- source_expression$xml_find_function_calls("c")
-    c_calls <- xml_find_all(xml_calls, call_xpath)
+    c_calls <- xml_find_all_(xml_calls, call_xpath)
 
     # bump count(args) by 1 if inside a pipeline
-    num_args <- as.integer(xml_find_num(c_calls, num_args_xpath)) +
-      as.integer(!is.na(xml_find_first(c_calls, to_pipe_xpath)))
+    num_args <- as.integer(xml_find_num_(c_calls, num_args_xpath)) +
+      as.integer(xml_find_lgl_(c_calls, glue("boolean({to_pipe_xpath})")))
     # NB: the xpath guarantees num_args is 0, 1, or 2. 2 comes
     #   in "a" %>% c("b").
     # TODO(#2476): Push this logic back into the XPath.
@@ -108,7 +107,7 @@ unnecessary_concatenation_linter <- function(allow_single_expression = TRUE) { #
     num_args <- num_args[is_unneeded]
     msg <- ifelse(num_args == 0L, msg_empty, msg_const)
     if (!allow_single_expression) {
-      is_single_expression <- !is.na(xml_find_first(c_calls, path_to_non_constant))
+      is_single_expression <- xml_find_lgl_(c_calls, path_to_non_constant)
       msg[is_single_expression] <- msg_const_expr
     }
 

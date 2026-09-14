@@ -30,9 +30,7 @@ test_that("linters_with_defaults warns on unused NULLs", {
 
 test_that("linters_with_tags() verifies the output of available_linters()", {
   local_mocked_bindings(
-    available_linters = function(...) {
-      data.frame(linter = c("fake_linter", "very_fake_linter"), package = "lintr", tags = "")
-    }
+    available_linters = \(...) data.frame(linter = c("fake_linter", "very_fake_linter"), package = "lintr", tags = "")
   )
   expect_error(
     linters_with_tags(NULL),
@@ -53,7 +51,6 @@ test_that("all default linters are tagged default", {
   expect_length(linters_with_tags(NULL, exclude_tags = available_tags()), 0L)
 
   # Check that above test also trips on default arguments.
-  skip_if_not_r_version("4.1.0") # Desired all.equal behavior only available in >= 4.1
   expect_identical(
     all.equal(linters_with_tags("default"), linters_with_defaults(line_length_linter(120L))),
     c(
@@ -94,7 +91,7 @@ test_that("linters_with_defaults(default = .) is supported with a deprecation wa
   expect_named(linters, c("default", "whitespace_linter"))
 
   # if default= is explicitly provided alongside defaults=, assume that was intentional
-  default <- Linter(function(.) list())
+  default <- Linter(\(.) list())
   expect_silent({
     linters <- linters_with_defaults(defaults = list(), default = default)
   })
@@ -116,5 +113,30 @@ test_that("all_linters respects ellipsis argument", {
   expect_identical(
     linters_with_tags(tags = NULL, implicit_integer_linter = NULL),
     all_linters(packages = "lintr", implicit_integer_linter = NULL)
+  )
+})
+
+test_that("Excluding cyclocomp linter avoids a warning", {
+  local_mocked_bindings(
+    requireNamespace = \(pkg, ...) pkg != "cyclocomp" || base::requireNamespace(pkg, ...)
+  )
+
+  expect_silent(all_linters(cyclocomp_linter = NULL))
+  expect_silent(linters_with_tags("configurable", cyclocomp_linter = NULL))
+})
+
+test_that("cyclocomp_linter does warn as intended", {
+  local_mocked_bindings(
+    requireNamespace = \(pkg, ...) pkg != "cyclocomp" && base::requireNamespace(pkg, ...)
+  )
+
+  expect_warning(linters_with_tags("configurable"), "cyclocomp::cyclocomp")
+})
+
+test_that("call_linter_factory reports informative abort when a linter factory fails instantiation", {
+  local_mocked_bindings(assignment_linter = \(...) cli::cli_abort("simulated factory failure"))
+  expect_error(
+    linters_with_tags("default"),
+    "Could not create linter with"
   )
 })

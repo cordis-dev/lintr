@@ -104,7 +104,7 @@ test_that("lint() results do not depend on the position of the .lintr", {
   )
 })
 
-test_that("lint uses linter names", {
+test_that("lint uses linter names", { # nofuzz: assignment
   expect_lint(
     "a = 2",
     list(linter = "bla"),
@@ -146,7 +146,7 @@ test_that("lint() results from file or text should be consistent", {
   expect_identical(lint_from_file, lint_from_text)
 })
 
-test_that("exclusions work with custom linter names", {
+test_that("exclusions work with custom linter names", { # nofuzz: assignment comment_injection
   expect_no_lint(
     "a = 2 # nolint: bla.",
     linters = list(bla = assignment_linter()),
@@ -205,7 +205,7 @@ test_that("old compatibility usage errors", {
   )
 
   expect_error(
-    lint("a <- 1\n", linters = function(two, arguments) NULL),
+    lint("a <- 1\n", linters = \(two, arguments) NULL),
     error_msg
   )
 
@@ -218,7 +218,7 @@ test_that("old compatibility usage errors", {
 test_that("Linters throwing an error give a helpful error", {
   tmp_file <- withr::local_tempfile(lines = "a <- 1")
   lintr_error_msg <- "a broken linter"
-  linter <- function() Linter(function(source_expression) cli_abort(lintr_error_msg))
+  linter <- function() Linter(\(source_expression) cli_abort(lintr_error_msg))
   # NB: Some systems/setups may use e.g. symlinked files when creating under tempfile();
   #   we don't care much about that, so just check basename()
   expect_error(lint(tmp_file, linter()), lintr_error_msg, fixed = TRUE)
@@ -227,7 +227,7 @@ test_that("Linters throwing an error give a helpful error", {
 
 test_that("Linter() input is validated", {
   expect_error(Linter(1L), "`fun` must be a function taking exactly one argument", fixed = TRUE)
-  expect_error(Linter(function(a, b) TRUE), "`fun` must be a function taking exactly one argument", fixed = TRUE)
+  expect_error(Linter(\(a, b) TRUE), "`fun` must be a function taking exactly one argument", fixed = TRUE)
 })
 
 test_that("typo in argument name gives helpful error", {
@@ -278,6 +278,8 @@ test_that("gitlab_output() writes expected report", {
       severity = "info"
     ))
   )
+
+  expect_error(gitlab_output(NULL), "must be a <lints> object", fixed = TRUE)
 })
 
 test_that("explicit parse_settings=TRUE works for inline data", {
@@ -294,4 +296,136 @@ test_that("explicit parse_settings=TRUE works for inline data", {
 
   # parse_settings=TRUE default not picked up
   expect_length(lint(text = lint_str), 2L)
+})
+
+test_that("lint(text=) handles unmarked UTF-8 text correctly", {
+  skip_if_not_utf8_locale()
+
+  tf <- withr::local_tempfile()
+  writeLines('x <- "\u00e4"', tf, useBytes = TRUE)
+  text_native <- readLines(tf)
+
+  expect_no_error(
+    expect_length(lint(text = text_native, linters = absolute_path_linter()), 0L)
+  )
+
+  writeLines(c('x <- "\u00e4"', 'y <- "/absolute/path"'), tf, useBytes = TRUE)
+  text_native_lint <- readLines(tf)
+
+  expect_no_error({
+    res_lint <- lint(text = text_native_lint, linters = absolute_path_linter(lax = FALSE))
+  })
+  expect_identical(res_lint[[1L]]$line_number, 2L)
+  expect_identical(res_lint[[1L]]$message, "Do not use absolute paths.")
+})
+
+test_that("lint(text=) handles UTF-8 marked text in non-UTF-8 locale", {
+  # Set LC_CTYPE to C to simulate non-UTF-8 locale
+  withr::local_locale(c(LC_CTYPE = "C"))
+
+  # Create UTF-8 marked text
+  text <- 'x <- "\u00e4"'
+  expect_identical(Encoding(text), "UTF-8")
+
+  expect_no_error(
+    expect_length(lint(text = text, linters = absolute_path_linter()), 0L)
+  )
+})
+
+test_that("lint(filename, text=) uses identity path in output", {
+  lints <- lint("R/foo.R", text = "x = 1\n", linters = assignment_linter())
+  expect_length(lints, 1L)
+  expect_match(lints[[1L]]$filename, "foo\\.R$") # Should NOT show <text>
+})
+
+test_that("lint(filename, text=) works with non-existent files", {
+  lints <- lint("R/file_that_does_not_exist.R", text = "x = 1\n", linters = assignment_linter())
+  expect_length(lints, 1L)
+  expect_match(lints[[1L]]$filename, "file_that_does_not_exist\\.R$")
+})
+
+test_that("lint(filename, text=) respects nolint comments", {
+  lints <- lint("new.R", text = "x = 1 # nolint: assignment_linter.\n", linters = assignment_linter())
+  expect_length(lints, 0L)
+
+  # block of skipped linting
+  block_code <- paste(
+    "# nolint start: assignment_linter.",
+    "x = 1",
+    "y = 2",
+    "# nolint end",
+    "z = 3",
+    sep = "\n"
+  )
+  lints_block <- lint("R/non_existent.R", text = block_code, linters = assignment_linter())
+  expect_length(lints_block, 1L)
+  expect_identical(lints_block[[1L]]$line_number, 5L)
+
+  # skip linting subsequent line
+  multiline_code <- paste(
+    "# nolint next: assignment_linter.",
+    "a = 1",
+    "b = 2",
+    sep = "\n"
+  )
+  lints_multiline <- lint("R/non_existent.R", text = multiline_code, linters = assignment_linter())
+  expect_length(lints_multiline, 1L)
+  expect_identical(lints_multiline[[1L]]$line_number, 3L)
+})
+
+test_that("lint(filename, text=) discovers config via identity path with parse_settings", {
+  pkg_path <- test_path("dummy_packages", "assignmentLinter")
+  local_config("linters: list(assignment_linter())", pkg_path)
+
+  lints <- lint(
+    file.path(pkg_path, "R", "abc.R"),
+    text = "x = 1\n",
+    parse_settings = TRUE
+  )
+  expect_length(lints, 1L)
+})
+
+test_that("lint(filename, text=) works with cache and updates when content changes", {
+  cache_path <- withr::local_tempdir()
+  linter <- assignment_linter()
+
+  env <- environment()
+  calls <- 0L
+  orig_lint_impl <- lint_impl_
+  local_mocked_bindings(
+    lint_impl_ = function(...) {
+      env$calls <- env$calls + 1L
+      orig_lint_impl(...)
+    }
+  )
+
+  lints <- lint("R/cached_file.R", text = "x = 1\n", linters = linter, cache = cache_path)
+  expect_length(lints, 1L)
+  expect_identical(calls, 1L)
+  expect_length(list.files(cache_path), 1L)
+
+  # Second call should use cache (lint_impl_ not called)
+  lints2 <- lint("R/cached_file.R", text = "x = 1\n", linters = linter, cache = cache_path)
+  expect_length(lints2, 1L)
+  expect_identical(calls, 1L)
+
+  # Changing text with the same identity path should invalidate cache and re-lint
+  lints3 <- lint("R/cached_file.R", text = "x <- 1\n", linters = linter, cache = cache_path)
+  expect_length(lints3, 0L)
+  expect_identical(calls, 2L)
+})
+
+test_that("lint(filename, text=) detects knitr from extension", {
+  rmd_content <- paste(
+    "---",
+    "title: test",
+    "---",
+    "",
+    "```{r}",
+    "x = 1",
+    "```",
+    sep = "\n"
+  )
+  lints <- lint("test.Rmd", text = rmd_content, linters = assignment_linter())
+  expect_length(lints, 1L)
 })

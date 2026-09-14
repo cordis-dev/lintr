@@ -42,7 +42,7 @@ namespace_linter <- function(check_exports = TRUE, check_nonexports = TRUE) {
   Linter(linter_level = "file", function(source_expression) {
     xml <- source_expression$full_xml_parsed_content
 
-    ns_nodes <- xml_find_all(xml, "//NS_GET | //NS_GET_INT")
+    ns_nodes <- xml_find_all_(xml, "//NS_GET | //NS_GET_INT")
 
     if (length(ns_nodes) == 0L) {
       return(list())
@@ -50,7 +50,7 @@ namespace_linter <- function(check_exports = TRUE, check_nonexports = TRUE) {
 
     ## Case 1: pkg is uninstalled in pkg::foo
 
-    package_nodes <- xml_find_all(ns_nodes, "preceding-sibling::*[1]")
+    package_nodes <- xml_find_all_(ns_nodes, "preceding-sibling::*[1]")
     packages <- get_r_string(package_nodes)
 
     lints <- list()
@@ -72,15 +72,15 @@ namespace_linter <- function(check_exports = TRUE, check_nonexports = TRUE) {
       package_nodes <- package_nodes[installed]
     }
 
-    if (!check_exports && !check_nonexports) {
+    if (length(packages) == 0L) {
       return(lints)
     }
 
-    ## Case 2/3/4: problems with foo in pkg::foo / pkg:::foo
+    ## Case 2/3/4/5: problems with foo in pkg::foo / pkg:::foo
 
     # run here, not in the factory, to allow for run- vs. "compile"-time differences in package structure
-    namespaces <- lapply(packages, function(package) tryCatch(getNamespace(package), error = identity))
-    failed_namespace <- vapply(namespaces, inherits, "condition", FUN.VALUE = logical(1L))
+    namespaces <- lapply(packages, \(package) tryCatch(getNamespace(package), packageNotFoundError = identity))
+    failed_namespace <- vapply(namespaces, inherits, "packageNotFoundError", FUN.VALUE = logical(1L))
 
     # nocov start
     if (any(failed_namespace)) {
@@ -89,8 +89,9 @@ namespace_linter <- function(check_exports = TRUE, check_nonexports = TRUE) {
     # nocov end
 
     ns_get <- xml_text(ns_nodes) == "::"
-    symbol_nodes <- xml_find_all(ns_nodes, "following-sibling::*[1]")
+    symbol_nodes <- xml_find_all_(ns_nodes, "following-sibling::*[1]")
     symbols <- get_r_string(symbol_nodes)
+    symbols <- sub("^`(.*)`$", "\\1", symbols)
 
     if (check_nonexports) {
       lints <- c(lints, build_ns_get_int_lints(
@@ -112,6 +113,29 @@ namespace_linter <- function(check_exports = TRUE, check_nonexports = TRUE) {
       ))
     }
 
+    pkg_path <- find_package(source_expression$filename)
+    ns_imports <- namespace_imports(pkg_path)
+    if (nrow(ns_imports) == 0L) {
+      return(lints)
+    }
+
+    is_imported <- vapply(
+      seq_along(symbols),
+      \(ii) any(ns_imports$pkg == packages[ii] & ns_imports$fun == symbols[ii]),
+      logical(1L)
+    )
+    if (any(is_imported)) {
+      lints <- c(lints, xml_nodes_to_lints(
+        symbol_nodes[is_imported],
+        source_expression = source_expression,
+        lint_message = sprintf(
+          "Don't use `%s` to access %s, which is already imported from %s.",
+          ifelse(ns_get[is_imported], "::", ":::"), symbols[is_imported], packages[is_imported]
+        ),
+        type = "warning"
+      ))
+    }
+
     lints
   })
 }
@@ -126,7 +150,7 @@ namespace_symbols <- function(ns, exported = TRUE) {
 is_in_pkg <- function(symbols, namespaces, exported = TRUE) {
   vapply(
     seq_along(symbols),
-    function(ii) symbols[[ii]] %in% namespace_symbols(namespaces[[ii]], exported = exported),
+    \(ii) symbols[[ii]] %in% namespace_symbols(namespaces[[ii]], exported = exported),
     logical(1L)
   )
 }
@@ -160,9 +184,6 @@ build_ns_get_int_lints <- function(packages, symbols, symbol_nodes, namespaces, 
 }
 
 build_ns_get_lints <- function(packages, symbols, symbol_nodes, namespaces, source_expression) {
-  # strip backticked symbols; `%>%` is the same as %>% (#1752).
-  symbols <- gsub("^`(.*)`$", "\\1", symbols)
-
   ## Case 4: foo is not an export in pkg::foo
   unexported <- !is_in_pkg(symbols, namespaces)
   xml_nodes_to_lints(

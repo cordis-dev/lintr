@@ -86,6 +86,21 @@ test_that("unnecessary_lambda_linter skips allowed inner comparisons", {
 
   # only lint "plain" calls that can be replaced by eliminating the lambda
   expect_no_lint("sapply(x, function(xi) sum(abs(xi)) == 0)", linter)
+
+  # negated calls, #2742
+  expect_no_lint("sapply(x, function(xi) !all.equal(xi, y))", linter)
+  expect_no_lint("sapply(x, \\(xi) !all.equal(xi, y))", linter)
+  expect_no_lint("purrr::map(x, ~!foo(.x))", linter)
+
+  # unary operators, #2742
+  expect_no_lint("sapply(x, function(xi) -foo(xi))", linter)
+  expect_no_lint("sapply(x, function(xi) +foo(xi))", linter)
+  expect_no_lint("sapply(x, function(xi) ~foo(xi))", linter)
+
+  # parenthesized/braced unary operators
+  expect_no_lint("sapply(x, function(xi) (!foo(xi)))", linter)
+  expect_no_lint("sapply(x, function(xi) (-foo(xi)))", linter)
+  expect_no_lint("sapply(x, function(xi) { -foo(xi) })", linter)
 })
 
 test_that("unnecessary_lambda_linter blocks simple disallowed usage", {
@@ -116,6 +131,18 @@ test_that("unnecessary_lambda_linter blocks simple disallowed usage", {
   expect_lint(
     "eapply(env, function(x) return(sum(x, na.rm = TRUE)))",
     rex::rex("Pass sum directly as a symbol to eapply()"),
+    linter
+  )
+
+  # parenthesized/braced valid simplifications
+  expect_lint(
+    "sapply(x, function(xi) (foo(xi)))",
+    rex::rex("Pass foo directly as a symbol to sapply()"),
+    linter
+  )
+  expect_lint(
+    "sapply(x, function(xi) { foo(xi) })",
+    rex::rex("Pass foo directly as a symbol to sapply()"),
     linter
   )
 })
@@ -277,7 +304,6 @@ test_that("cases with braces are caught", {
 })
 
 test_that("function shorthand is handled", {
-  skip_if_not_r_version("4.1.0")
   linter <- unnecessary_lambda_linter()
   linter_allow <- unnecessary_lambda_linter(allow_comparison = TRUE)
 
@@ -298,6 +324,8 @@ test_that("function shorthand is handled", {
 })
 
 test_that("lints vectorize", {
+  linter <- unnecessary_lambda_linter()
+
   expect_lint(
     trim_some("{
       sapply(x, function(xi) sd(xi))
@@ -309,6 +337,18 @@ test_that("lints vectorize", {
       list("sd", line_number = 2L),
       list("sum", line_number = 3L)
     ),
-    unnecessary_lambda_linter()
+    linter
+  )
+
+  expect_lint(
+    trim_some("{
+      sapply(x, function(xi) foo(xi) == 2)
+      vapply(y, function(yi) bar(yi) == 1, logical(1L))
+    }"),
+    list(
+      list(rex::rex("sapply(x, foo)"), line_number = 2L),
+      list(rex::rex("vapply(x, foo, FUN.VALUE = <intermediate>)"), line_number = 3L)
+    ),
+    linter
   )
 })
